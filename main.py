@@ -23,7 +23,7 @@ if config.SSL_CA_FILE:
 
 from fetch_emails import fetch_digest_emails
 from extract_links import extract_links
-from fetch_articles import fetch_article
+from fetch_articles import fetch_article, resolve_article_url
 from summarize import summarize, summarize_extended
 from text_to_speech import generate_article_audio
 
@@ -94,16 +94,44 @@ def run(dry_run=False):
         print("Nothing to process. Exiting.")
         return
 
-    # 2. Extract links from all emails
+    # 2. Extract links from all emails and dedupe by resolved destination
     all_articles = []
+    queued_resolved_urls = set()
     email_results = OrderedDict()  # email_subject -> list of result dicts
     for email in emails:
         urls = extract_links(email)
-        print(f"  📧 \"{email['subject']}\" → {len(urls)} link(s)")
+        new_items = []
+        for url in urls:
+            resolved_url = resolve_article_url(url)
+            if resolved_url in queued_resolved_urls:
+                continue
+            queued_resolved_urls.add(resolved_url)
+            new_items.append({"url": url, "resolved_url": resolved_url})
+
+        print(
+            f"  📧 \"{email['subject']}\" → {len(urls)} link(s) found, "
+            f"{len(new_items)} unique to fetch (after redirect resolution)"
+        )
         if email["subject"] not in email_results:
             email_results[email["subject"]] = []
-        for url in urls:
-            all_articles.append({"url": url, "email_subject": email["subject"]})
+        if new_items:
+            print("     Links queued for fetch:")
+            for idx, item in enumerate(new_items, 1):
+                url = item["url"]
+                resolved_url = item["resolved_url"]
+                if resolved_url != url:
+                    print(f"       {idx}. {url} -> {resolved_url}")
+                else:
+                    print(f"       {idx}. {url}")
+        else:
+            print("     No new links to fetch (all duplicates).")
+
+        for item in new_items:
+            all_articles.append({
+                "url": item["url"],
+                "resolved_url": item["resolved_url"],
+                "email_subject": email["subject"],
+            })
 
     if not all_articles:
         print("\nNo article links found in digest emails. Exiting.")
@@ -115,11 +143,12 @@ def run(dry_run=False):
     success_count = 0
     for i, item in enumerate(all_articles, 1):
         url = item["url"]
+        resolved_url = item["resolved_url"]
         email_subj = item["email_subject"]
         print(f"[{i}/{len(all_articles)}] {url}")
 
         # Fetch article
-        article = fetch_article(url)
+        article = fetch_article(url, resolved_url=resolved_url)
         if not article:
             email_results[email_subj].append({
                 "url": url,

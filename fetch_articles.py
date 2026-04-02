@@ -47,6 +47,11 @@ def _resolve_url(url):
             return url
 
 
+def resolve_article_url(url):
+    """Resolve a URL to its final redirect destination."""
+    return _resolve_url(url)
+
+
 def _download(url):
     """Download page HTML using requests (more reliable than trafilatura's fetcher)."""
     resp = requests.get(
@@ -79,7 +84,7 @@ def _is_js_only(url):
     return domain in _JS_ONLY_DOMAINS
 
 
-def fetch_article(url):
+def fetch_article(url, resolved_url=None):
     """
     Fetch a URL and extract the main article text.
     Follows redirects before fetching. Skips JS-only sites.
@@ -87,7 +92,7 @@ def fetch_article(url):
     """
     try:
         # Resolve redirect chains (e.g. newsletter tracking links)
-        resolved = _resolve_url(url)
+        resolved = resolved_url or _resolve_url(url)
         if resolved != url:
             print(f"  ↪ Redirected to: {resolved}")
 
