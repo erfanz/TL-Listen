@@ -1,6 +1,7 @@
 import requests
 
 import config
+from email_processing import _get_html_body, _get_sanitized_html_body
 
 _SYSTEM_PROMPT = (
     "You are a concise news summarizer. Given an article, produce a clear, "

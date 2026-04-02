@@ -8,6 +8,7 @@ trafilatura
 
 # LLM (Ollama — just needs requests)
 requests
+python-dotenv
 
 # TTS (Kokoro)
 kokoro>=0.3; python_version == "3.12"
