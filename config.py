@@ -1,6 +1,12 @@
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+# Load project-level env vars from .env on startup.
+_PROJECT_ROOT = Path(__file__).resolve().parent
+load_dotenv(_PROJECT_ROOT / ".env")
+
 # Gmail settings
 GMAIL_LABEL = os.getenv("DIGEST_GMAIL_LABEL", "digests")
 GMAIL_CREDENTIALS_FILE = os.getenv("DIGEST_GMAIL_CREDENTIALS", "credentials.json")

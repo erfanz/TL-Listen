@@ -43,6 +43,14 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+Optional: create a `.env` file in the project root. It is auto-loaded on startup.
+Example:
+```bash
+DIGEST_GMAIL_LABEL=digests
+DIGEST_FORCE_CONTENT_SENDER_REGEX=substack\\.com;news@mydigest\\.com
+DIGEST_FORCE_LINKS_SUBJECT_REGEX=Hacker News Digest|Link Roundup
+```
+
 ### 2. Gmail API credentials
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
