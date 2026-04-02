@@ -6,8 +6,10 @@ Fetches digest emails from Gmail, extracts article links, fetches and
 summarizes articles, and produces MP3 audio files for each one.
 """
 
+import json
 import os
 import sys
+from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
 
@@ -32,6 +34,49 @@ def _sanitize_filename(text, max_len=60):
     return safe.strip().replace(" ", "_")[:max_len] or "article"
 
 
+def _write_summary_report(email_results, out_dir):
+    """Write a per-email summary report (text table + JSON) to the output dir."""
+    report_path = out_dir / "summary.txt"
+    json_path = out_dir / "summary.json"
+
+    lines = ["=" * 80, "  EMAIL DIGEST — PROCESSING SUMMARY", "=" * 80, ""]
+
+    json_data = []
+    for email_subject, articles in email_results.items():
+        lines.append(f"📧 {email_subject}")
+        lines.append("-" * 80)
+        lines.append(f"  {'#':<4} {'Article Title':<40} {'Audio':>6}  URL")
+        lines.append(f"  {'—'*3:<4} {'—'*38:<40} {'—'*5:>6}  {'—'*40}")
+
+        email_json = {"email_subject": email_subject, "articles": []}
+        for idx, art in enumerate(articles, 1):
+            title_display = (art["title"] or "⚠️ Failed to fetch")[:38]
+            audio_flag = "  ✅" if art["audio"] else "  ❌"
+            lines.append(f"  {idx:<4} {title_display:<40} {audio_flag:>6}  {art['url']}")
+            email_json["articles"].append({
+                "url": art["url"],
+                "title": art["title"],
+                "audio_produced": art["audio"],
+            })
+
+        total = len(articles)
+        audio_count = sum(1 for a in articles if a["audio"])
+        fetched_count = sum(1 for a in articles if a["title"])
+        lines.append("")
+        lines.append(f"  Total: {total} URL(s) | {fetched_count} fetched | {audio_count} audio file(s)")
+        lines.append("")
+        json_data.append(email_json)
+
+    report_text = "\n".join(lines) + "\n"
+    report_path.write_text(report_text, encoding="utf-8")
+    json_path.write_text(json.dumps(json_data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    print(f"\n📊 Summary report saved to {report_path}")
+    print(f"   JSON data saved to {json_path}")
+    print()
+    print(report_text)
+
+
 def run(dry_run=False):
     today = datetime.now().strftime("%Y-%m-%d")
     out_dir = config.OUTPUT_DIR / today
@@ -51,9 +96,12 @@ def run(dry_run=False):
 
     # 2. Extract links from all emails
     all_articles = []
+    email_results = OrderedDict()  # email_subject -> list of result dicts
     for email in emails:
         urls = extract_links(email)
         print(f"  📧 \"{email['subject']}\" → {len(urls)} link(s)")
+        if email["subject"] not in email_results:
+            email_results[email["subject"]] = []
         for url in urls:
             all_articles.append({"url": url, "email_subject": email["subject"]})
 
@@ -67,18 +115,25 @@ def run(dry_run=False):
     success_count = 0
     for i, item in enumerate(all_articles, 1):
         url = item["url"]
+        email_subj = item["email_subject"]
         print(f"[{i}/{len(all_articles)}] {url}")
 
         # Fetch article
         article = fetch_article(url)
         if not article:
+            email_results[email_subj].append({
+                "url": url,
+                "title": None,
+                "audio": False,
+            })
             continue
 
-        print(f"  📄 \"{article['title']}\" ({len(article['text'])} chars)")
+        title = article["title"]
+        print(f"  📄 \"{title}\" ({len(article['text'])} chars)")
 
         # Summarize
         print("  🤖 Summarizing...")
-        summary = summarize(article["text"], title=article["title"])
+        summary = summarize(article["text"], title=title)
         print(f"  📝 Summary: {summary[:100]}...")
 
         # Check if article is too long — use extended summary instead of full text
@@ -86,17 +141,17 @@ def run(dry_run=False):
         is_long = word_count > config.ARTICLE_WORD_LIMIT
         if is_long:
             print(f"  📏 Article is {word_count} words (>{config.ARTICLE_WORD_LIMIT}) — generating extended summary...")
-            extended_summary = summarize_extended(article["text"], title=article["title"])
+            extended_summary = summarize_extended(article["text"], title=title)
             body_text = extended_summary
         else:
             body_text = article["text"]
 
         # Save text (summary + article or extended summary)
-        filename = f"{i:03d}_{_sanitize_filename(article['title'])}"
+        filename = f"{i:03d}_{_sanitize_filename(title)}"
         text_file = text_dir / f"{filename}.txt"
         if is_long:
             text_file.write_text(
-                f"Title: {article['title']}\n"
+                f"Title: {title}\n"
                 f"URL: {article['url']}\n\n"
                 f"--- Summary ---\n{summary}\n\n"
                 f"--- Extended Summary (article was {word_count} words) ---\n{body_text}\n",
@@ -104,7 +159,7 @@ def run(dry_run=False):
             )
         else:
             text_file.write_text(
-                f"Title: {article['title']}\n"
+                f"Title: {title}\n"
                 f"URL: {article['url']}\n\n"
                 f"--- Summary ---\n{summary}\n\n"
                 f"--- Full Article ---\n{article['text']}\n",
@@ -114,17 +169,36 @@ def run(dry_run=False):
 
         if dry_run:
             print("  ⏭️  Dry run — skipping audio generation.\n")
+            email_results[email_subj].append({
+                "url": url,
+                "title": title,
+                "audio": False,
+            })
             continue
 
         # Generate audio
         output_path = mp3_dir / filename
         print("  🎙️  Generating audio...")
-        result_file = generate_article_audio(
-            article["title"], summary, body_text, output_path,
-            is_long=is_long,
-        )
-        print(f"  ✅ {result_file}\n")
-        success_count += 1
+        audio_ok = False
+        try:
+            result_file = generate_article_audio(
+                title, summary, body_text, output_path,
+                is_long=is_long,
+            )
+            print(f"  ✅ {result_file}\n")
+            audio_ok = True
+            success_count += 1
+        except Exception as exc:
+            print(f"  ❌ Audio generation failed: {exc}\n")
+
+        email_results[email_subj].append({
+            "url": url,
+            "title": title,
+            "audio": audio_ok,
+        })
+
+    # 4. Write per-email summary report
+    _write_summary_report(email_results, out_dir)
 
     print(f"\n🎉 Done! Generated {success_count} audio file(s) in {mp3_dir}")
 
