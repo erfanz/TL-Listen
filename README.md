@@ -2,8 +2,11 @@
 
 Turn your daily email digests into a podcast you can listen to on your commute.
 
-This tool automatically fetches digest emails from Gmail, extracts article links,
-summarizes each article using a local LLM (Ollama), and produces MP3 audio files
+This tool automatically fetches digest emails from Gmail and supports two modes:
+1. Link-digest emails: extract/fetch linked articles
+2. Content-heavy emails: summarize stories directly from the email body (without fetching internal links)
+
+It summarizes each item using a local LLM (Ollama), and produces MP3 audio files
 using Kokoro TTS.
 
 ## Architecture
@@ -89,6 +92,30 @@ All settings can be overridden via environment variables:
 | `DIGEST_OUTPUT_DIR` | `output` | Output directory for MP3 files |
 | `DIGEST_LINK_SKIP_RULES_FILE` | `link_skip_rules.json` | JSON file with URL skip rules for link extraction |
 | `DIGEST_SSL_CA_FILE` | *(auto-detect)* | Custom CA bundle for corporate proxies |
+| `DIGEST_EMAIL_CONTENT_MIN_WORDS` | `120` | Min email body words to consider content mode |
+| `DIGEST_EMAIL_CONTENT_MAX_LINK_DENSITY` | `0.03` | Max links/word ratio for content mode |
+| `DIGEST_EMAIL_STORY_MIN_WORDS` | `80` | Minimum words per story chunk in content emails |
+| `DIGEST_EMAIL_STORY_MAX_WORDS` | `900` | Force split story chunks larger than this |
+| `DIGEST_FORCE_CONTENT_SUBJECT_REGEX` | *(empty)* | `;`-separated regex patterns to force content mode by subject |
+| `DIGEST_FORCE_CONTENT_SENDER_REGEX` | *(empty)* | `;`-separated regex patterns to force content mode by sender |
+| `DIGEST_FORCE_LINKS_SUBJECT_REGEX` | *(empty)* | `;`-separated regex patterns to force links mode by subject |
+| `DIGEST_FORCE_LINKS_SENDER_REGEX` | *(empty)* | `;`-separated regex patterns to force links mode by sender |
+
+### Email mode routing (links vs content)
+
+Each email is automatically classified:
+- **links mode**: behaves like before (extract URLs, fetch external articles)
+- **content mode**: ignores internal links and processes the email body itself
+
+Content-mode emails are split into multiple story chunks using the local LLM, so one email can
+produce multiple audio items. If splitting output is invalid, the app falls back to a single
+story chunk for that email.
+
+If auto-detection misclassifies a newsletter, force behavior with regex env vars, for example:
+```bash
+export DIGEST_FORCE_CONTENT_SENDER_REGEX="mynewsletter\\.com;Substack"
+export DIGEST_FORCE_LINKS_SUBJECT_REGEX="Hacker News Digest|Link Roundup"
+```
 
 ### Configurable link skip rules
 

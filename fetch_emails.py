@@ -100,12 +100,14 @@ def fetch_digest_emails(mark_read=True):
         )
         headers = {h["name"]: h["value"] for h in msg["payload"].get("headers", [])}
         subject = headers.get("Subject", "(no subject)")
+        sender = headers.get("From", "")
         html_parts, text_parts = _decode_body(msg["payload"])
 
         emails.append(
             {
                 "id": msg_ref["id"],
                 "subject": subject,
+                "from": sender,
                 "html": "\n".join(html_parts),
                 "text": "\n".join(text_parts),
             }

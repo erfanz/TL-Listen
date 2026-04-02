@@ -22,6 +22,25 @@ LINK_SKIP_RULES_FILE = Path(
     os.getenv("DIGEST_LINK_SKIP_RULES_FILE", "link_skip_rules.json")
 )
 
+# Email processing mode settings
+def _split_regex_env(name):
+    raw = os.getenv(name, "")
+    if not raw.strip():
+        return []
+    return [item.strip() for item in raw.split(";") if item.strip()]
+
+
+FORCE_CONTENT_SUBJECT_REGEX = _split_regex_env("DIGEST_FORCE_CONTENT_SUBJECT_REGEX")
+FORCE_CONTENT_SENDER_REGEX = _split_regex_env("DIGEST_FORCE_CONTENT_SENDER_REGEX")
+FORCE_LINKS_SUBJECT_REGEX = _split_regex_env("DIGEST_FORCE_LINKS_SUBJECT_REGEX")
+FORCE_LINKS_SENDER_REGEX = _split_regex_env("DIGEST_FORCE_LINKS_SENDER_REGEX")
+EMAIL_CONTENT_MIN_WORDS = int(os.getenv("DIGEST_EMAIL_CONTENT_MIN_WORDS", "120"))
+EMAIL_CONTENT_MAX_LINK_DENSITY = float(
+    os.getenv("DIGEST_EMAIL_CONTENT_MAX_LINK_DENSITY", "0.15")
+)
+EMAIL_STORY_MIN_WORDS = int(os.getenv("DIGEST_EMAIL_STORY_MIN_WORDS", "80"))
+EMAIL_STORY_MAX_WORDS = int(os.getenv("DIGEST_EMAIL_STORY_MAX_WORDS", "900"))
+
 # Article fetch settings
 FETCH_TIMEOUT = int(os.getenv("DIGEST_FETCH_TIMEOUT", "30"))
 

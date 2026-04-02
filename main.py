@@ -8,6 +8,7 @@ summarizes articles, and produces MP3 audio files for each one.
 
 import json
 import os
+import re
 import sys
 from collections import OrderedDict
 from datetime import datetime
@@ -24,7 +25,7 @@ if config.SSL_CA_FILE:
 from fetch_emails import fetch_digest_emails
 from extract_links import extract_links_with_details
 from fetch_articles import fetch_article, resolve_article_url
-from summarize import summarize, summarize_extended
+from summarize import summarize, summarize_extended, split_email_stories
 from text_to_speech import generate_article_audio
 
 
@@ -32,6 +33,67 @@ def _sanitize_filename(text, max_len=60):
     """Create a filesystem-safe filename from text."""
     safe = "".join(c if c.isalnum() or c in " -_" else "" for c in text)
     return safe.strip().replace(" ", "_")[:max_len] or "article"
+
+
+def _plain_email_content(email):
+    """Build plain content from an email body for summarization."""
+    text = (email.get("text") or "").strip()
+    if text:
+        return text
+
+    html = email.get("html") or ""
+    if not html:
+        return ""
+
+    # Preserve block boundaries before stripping tags to keep story structure.
+    body = re.sub(r"(?is)<(script|style)[^>]*>.*?</\1>", " ", html)
+    body = re.sub(r"(?i)</?(p|div|br|li|h[1-6]|tr|section|article|blockquote)[^>]*>", "\n", body)
+    body = re.sub(r"(?s)<[^>]+>", " ", body)
+    body = re.sub(r"\n\s*\n\s*\n+", "\n\n", body)
+    body = re.sub(r"[ \t]+", " ", body)
+    return body.strip()
+
+
+def _matches_any_regex(value, patterns):
+    for pattern in patterns:
+        if re.search(pattern, value, flags=re.IGNORECASE):
+            return True
+    return False
+
+
+def _decide_email_mode(email):
+    """
+    Decide whether an email should be processed as:
+      - links: fetch external article links
+      - content: summarize stories in the email body itself
+    """
+    subject = email.get("subject", "")
+    sender = email.get("from", "")
+
+    if _matches_any_regex(subject, config.FORCE_CONTENT_SUBJECT_REGEX) or _matches_any_regex(
+        sender, config.FORCE_CONTENT_SENDER_REGEX
+    ):
+        return "content", "forced_content_rule", None
+    if _matches_any_regex(subject, config.FORCE_LINKS_SUBJECT_REGEX) or _matches_any_regex(
+        sender, config.FORCE_LINKS_SENDER_REGEX
+    ):
+        return "links", "forced_links_rule", None
+
+    body = _plain_email_content(email)
+    words = len(body.split())
+    link_details = extract_links_with_details(email)
+    candidate_links = len(link_details["article_urls"])
+    link_density = candidate_links / max(words, 1)
+
+    is_content_email = (
+        words >= config.EMAIL_CONTENT_MIN_WORDS
+        and link_density <= config.EMAIL_CONTENT_MAX_LINK_DENSITY
+    )
+    mode = "content" if is_content_email else "links"
+    reason = (
+        f"heuristic(words={words}, links={candidate_links}, density={link_density:.4f})"
+    )
+    return mode, reason, link_details
 
 
 def _write_summary_report(email_results, out_dir):
@@ -45,25 +107,29 @@ def _write_summary_report(email_results, out_dir):
     for email_subject, articles in email_results.items():
         lines.append(f"📧 {email_subject}")
         lines.append("-" * 80)
-        lines.append(f"  {'#':<4} {'Article Title':<40} {'Audio':>6}  URL")
-        lines.append(f"  {'—'*3:<4} {'—'*38:<40} {'—'*5:>6}  {'—'*40}")
+        lines.append(f"  {'#':<4} {'Source':<12} {'Article Title':<28} {'Audio':>6}  URL")
+        lines.append(f"  {'—'*3:<4} {'—'*10:<12} {'—'*26:<28} {'—'*5:>6}  {'—'*28}")
 
         email_json = {"email_subject": email_subject, "articles": []}
         for idx, art in enumerate(articles, 1):
-            title_display = (art["title"] or "⚠️ Failed to fetch")[:38]
+            title_display = (art["title"] or "⚠️ Failed to fetch")[:26]
+            source_display = (art.get("source_type") or "external_url")[:10]
             audio_flag = "  ✅" if art["audio"] else "  ❌"
-            lines.append(f"  {idx:<4} {title_display:<40} {audio_flag:>6}  {art['url']}")
+            lines.append(
+                f"  {idx:<4} {source_display:<12} {title_display:<28} {audio_flag:>6}  {art['url']}"
+            )
             email_json["articles"].append({
                 "url": art["url"],
                 "title": art["title"],
                 "audio_produced": art["audio"],
+                "source_type": art.get("source_type", "external_url"),
             })
 
         total = len(articles)
         audio_count = sum(1 for a in articles if a["audio"])
         fetched_count = sum(1 for a in articles if a["title"])
         lines.append("")
-        lines.append(f"  Total: {total} URL(s) | {fetched_count} fetched | {audio_count} audio file(s)")
+        lines.append(f"  Total: {total} item(s) | {fetched_count} fetched | {audio_count} audio file(s)")
         lines.append("")
         json_data.append(email_json)
 
@@ -94,12 +160,38 @@ def run(dry_run=False):
         print("Nothing to process. Exiting.")
         return
 
-    # 2. Extract links from all emails and dedupe by resolved destination
+    # 2. Decide per-email mode and build work queue
     all_articles = []
+    content_story_count = 0
     queued_resolved_urls = set()
     email_results = OrderedDict()  # email_subject -> list of result dicts
     for email in emails:
-        link_details = extract_links_with_details(email)
+        mode, mode_reason, link_details = _decide_email_mode(email)
+        if email["subject"] not in email_results:
+            email_results[email["subject"]] = []
+
+        print(f"  📧 \"{email['subject']}\" → mode={mode} ({mode_reason})")
+        if mode == "content":
+            content = _plain_email_content(email)
+            if not content:
+                print("     ⚠️  Empty email body. Skipping.")
+                continue
+            stories = split_email_stories(content, email_subject=email["subject"])
+            content_story_count += len(stories)
+            print(f"     {len(stories)} story chunk(s) found in email body. Internal links ignored.")
+            for story_idx, story in enumerate(stories, 1):
+                all_articles.append({
+                    "url": f"gmail://message/{email['id']}#story-{story_idx}",
+                    "resolved_url": f"gmail://message/{email['id']}#story-{story_idx}",
+                    "email_subject": email["subject"],
+                    "source_type": "email_story",
+                    "title_hint": story.get("title") or f"{email['subject']} — Story {story_idx}",
+                    "text_override": story["text"],
+                })
+            continue
+
+        if link_details is None:
+            link_details = extract_links_with_details(email)
         urls = link_details["article_urls"]
         skipped = link_details["skipped_urls"]
         new_items = []
@@ -111,7 +203,7 @@ def run(dry_run=False):
             new_items.append({"url": url, "resolved_url": resolved_url})
 
         print(
-            f"  📧 \"{email['subject']}\" → {link_details['raw_count']} raw link(s), "
+            f"     {link_details['raw_count']} raw link(s), "
             f"{len(skipped)} skipped by filters, {len(urls)} candidate article link(s), "
             f"{len(new_items)} unique to fetch (after redirect resolution)"
         )
@@ -119,8 +211,6 @@ def run(dry_run=False):
             print("     Links skipped by filters:")
             for idx, item in enumerate(skipped, 1):
                 print(f"       {idx}. [{item['reason']}] {item['url']}")
-        if email["subject"] not in email_results:
-            email_results[email["subject"]] = []
         if new_items:
             print("     Links queued for fetch:")
             for idx, item in enumerate(new_items, 1):
@@ -138,13 +228,17 @@ def run(dry_run=False):
                 "url": item["url"],
                 "resolved_url": item["resolved_url"],
                 "email_subject": email["subject"],
+                "source_type": "external_url",
             })
 
     if not all_articles:
-        print("\nNo article links found in digest emails. Exiting.")
+        print("\nNo processable content found in digest emails. Exiting.")
         return
 
-    print(f"\n🔗 Found {len(all_articles)} article(s) total. Processing...\n")
+    if content_story_count:
+        print(f"\n🔗 Found {len(all_articles)} item(s) total ({content_story_count} from email stories). Processing...\n")
+    else:
+        print(f"\n🔗 Found {len(all_articles)} item(s) total. Processing...\n")
 
     # 3. Fetch, summarize, and generate audio for each article
     success_count = 0
@@ -152,17 +246,28 @@ def run(dry_run=False):
         url = item["url"]
         resolved_url = item["resolved_url"]
         email_subj = item["email_subject"]
+        source_type = item.get("source_type", "external_url")
         print(f"[{i}/{len(all_articles)}] {url}")
 
-        # Fetch article
-        article = fetch_article(url, resolved_url=resolved_url)
-        if not article:
-            email_results[email_subj].append({
+        if source_type == "email_story":
+            article = {
                 "url": url,
-                "title": None,
-                "audio": False,
-            })
-            continue
+                "original_url": url,
+                "title": item.get("title_hint") or "Email story",
+                "text": item["text_override"],
+            }
+            print("  📨 Using email story content (no external fetch).")
+        else:
+            # Fetch article
+            article = fetch_article(url, resolved_url=resolved_url)
+            if not article:
+                email_results[email_subj].append({
+                    "url": url,
+                    "title": None,
+                    "audio": False,
+                    "source_type": source_type,
+                })
+                continue
 
         title = article["title"]
         print(f"  📄 \"{title}\" ({len(article['text'])} chars)")
@@ -223,6 +328,7 @@ def run(dry_run=False):
                 "url": url,
                 "title": title,
                 "audio": False,
+                "source_type": source_type,
             })
             continue
 
@@ -245,6 +351,7 @@ def run(dry_run=False):
             "url": url,
             "title": title,
             "audio": audio_ok,
+            "source_type": source_type,
         })
 
     # 4. Write per-email summary report
