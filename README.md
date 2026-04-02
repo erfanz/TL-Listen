@@ -62,7 +62,7 @@ You can change the label name via the `DIGEST_GMAIL_LABEL` environment variable.
 # Full run — fetches emails, processes articles, generates MP3s
 python main.py
 
-# Dry run — fetches and summarizes but skips audio generation & email marking
+# Dry run — fetches articles and saves full text, but skips summarization, audio generation, & email marking
 python main.py --dry-run
 ```
 

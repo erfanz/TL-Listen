@@ -167,25 +167,39 @@ def run(dry_run=False):
         title = article["title"]
         print(f"  📄 \"{title}\" ({len(article['text'])} chars)")
 
-        # Summarize
-        print("  🤖 Summarizing...")
-        summary = summarize(article["text"], title=title)
-        print(f"  📝 Summary: {summary[:100]}...")
-
-        # Check if article is too long — use extended summary instead of full text
-        word_count = len(article["text"].split())
-        is_long = word_count > config.ARTICLE_WORD_LIMIT
-        if is_long:
-            print(f"  📏 Article is {word_count} words (>{config.ARTICLE_WORD_LIMIT}) — generating extended summary...")
-            extended_summary = summarize_extended(article["text"], title=title)
-            body_text = extended_summary
-        else:
+        # In dry-run mode, skip all summarization and only save fetched text.
+        if dry_run:
+            summary = ""
+            word_count = len(article["text"].split())
+            is_long = word_count > config.ARTICLE_WORD_LIMIT
             body_text = article["text"]
+        else:
+            # Summarize
+            print("  🤖 Summarizing...")
+            summary = summarize(article["text"], title=title)
+            print(f"  📝 Summary: {summary[:100]}...")
 
-        # Save text (summary + article or extended summary)
+            # Check if article is too long — use extended summary instead of full text
+            word_count = len(article["text"].split())
+            is_long = word_count > config.ARTICLE_WORD_LIMIT
+            if is_long:
+                print(f"  📏 Article is {word_count} words (>{config.ARTICLE_WORD_LIMIT}) — generating extended summary...")
+                extended_summary = summarize_extended(article["text"], title=title)
+                body_text = extended_summary
+            else:
+                body_text = article["text"]
+
+        # Save text output
         filename = f"{i:03d}_{_sanitize_filename(title)}"
         text_file = text_dir / f"{filename}.txt"
-        if is_long:
+        if dry_run:
+            text_file.write_text(
+                f"Title: {title}\n"
+                f"URL: {article['url']}\n\n"
+                f"--- Full Article ---\n{article['text']}\n",
+                encoding="utf-8",
+            )
+        elif is_long:
             text_file.write_text(
                 f"Title: {title}\n"
                 f"URL: {article['url']}\n\n"
