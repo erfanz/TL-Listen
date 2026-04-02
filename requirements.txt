@@ -1,0 +1,15 @@
+# Gmail API
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib
+
+# Article extraction
+trafilatura
+
+# LLM (Ollama — just needs requests)
+requests
+
+# TTS (Kokoro)
+kokoro>=0.3
+soundfile
+numpy
