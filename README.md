@@ -87,7 +87,28 @@ All settings can be overridden via environment variables:
 | `DIGEST_TTS_VOICE` | `af_heart` | Kokoro voice name |
 | `DIGEST_TTS_SPEED` | `1.0` | TTS playback speed |
 | `DIGEST_OUTPUT_DIR` | `output` | Output directory for MP3 files |
+| `DIGEST_LINK_SKIP_RULES_FILE` | `link_skip_rules.json` | JSON file with URL skip rules for link extraction |
 | `DIGEST_SSL_CA_FILE` | *(auto-detect)* | Custom CA bundle for corporate proxies |
+
+### Configurable link skip rules
+
+`extract_links.py` loads URL skip rules from `link_skip_rules.json` (or the file path set in
+`DIGEST_LINK_SKIP_RULES_FILE`).
+
+The file is a JSON array of rule objects. Each rule can include:
+- `domain` (optional): exact host match (e.g., `news.ycombinator.com`)
+- `path_regex` (optional): regex against URL path
+- `query_regex` (optional): regex against URL query string
+
+If a URL matches a rule, it is skipped during extraction.
+
+Example:
+```json
+[
+  { "domain": "news.ycombinator.com", "path_regex": "^/item$" },
+  { "domain": "hndigest.com", "path_regex": "^/m/[^/]+/c/\\d+$" }
+]
+```
 
 ### Corporate proxy / SSL
 

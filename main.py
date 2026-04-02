@@ -22,7 +22,7 @@ if config.SSL_CA_FILE:
     os.environ.setdefault("CURL_CA_BUNDLE", config.SSL_CA_FILE)
 
 from fetch_emails import fetch_digest_emails
-from extract_links import extract_links
+from extract_links import extract_links_with_details
 from fetch_articles import fetch_article, resolve_article_url
 from summarize import summarize, summarize_extended
 from text_to_speech import generate_article_audio
@@ -99,7 +99,9 @@ def run(dry_run=False):
     queued_resolved_urls = set()
     email_results = OrderedDict()  # email_subject -> list of result dicts
     for email in emails:
-        urls = extract_links(email)
+        link_details = extract_links_with_details(email)
+        urls = link_details["article_urls"]
+        skipped = link_details["skipped_urls"]
         new_items = []
         for url in urls:
             resolved_url = resolve_article_url(url)
@@ -109,9 +111,14 @@ def run(dry_run=False):
             new_items.append({"url": url, "resolved_url": resolved_url})
 
         print(
-            f"  📧 \"{email['subject']}\" → {len(urls)} link(s) found, "
+            f"  📧 \"{email['subject']}\" → {link_details['raw_count']} raw link(s), "
+            f"{len(skipped)} skipped by filters, {len(urls)} candidate article link(s), "
             f"{len(new_items)} unique to fetch (after redirect resolution)"
         )
+        if skipped:
+            print("     Links skipped by filters:")
+            for idx, item in enumerate(skipped, 1):
+                print(f"       {idx}. [{item['reason']}] {item['url']}")
         if email["subject"] not in email_results:
             email_results[email["subject"]] = []
         if new_items:

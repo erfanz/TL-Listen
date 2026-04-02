@@ -1,0 +1,10 @@
+[
+  {
+    "domain": "news.ycombinator.com",
+    "path_regex": "^/item$"
+  },
+  {
+    "domain": "hndigest.com",
+    "path_regex": "^/m/[^/]+/c/\\d+$"
+  }
+]

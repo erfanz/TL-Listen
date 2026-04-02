@@ -18,6 +18,9 @@ TTS_LANG = os.getenv("DIGEST_TTS_LANG", "a")  # 'a' = American English
 
 # Output settings
 OUTPUT_DIR = Path(os.getenv("DIGEST_OUTPUT_DIR", "output"))
+LINK_SKIP_RULES_FILE = Path(
+    os.getenv("DIGEST_LINK_SKIP_RULES_FILE", "link_skip_rules.json")
+)
 
 # Article fetch settings
 FETCH_TIMEOUT = int(os.getenv("DIGEST_FETCH_TIMEOUT", "30"))
