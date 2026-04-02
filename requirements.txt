@@ -10,6 +10,6 @@ trafilatura
 requests
 
 # TTS (Kokoro)
-kokoro>=0.3
+kokoro>=0.3; python_version == "3.12"
 soundfile
 numpy
