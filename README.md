@@ -71,7 +71,7 @@ Output files are saved to `output/YYYY-MM-DD/` with one MP3 per article.
 Each MP3 follows this format:
 1. Article title announcement
 2. Summary (3-5 sentences)
-3. Full article text
+3. Full article text, or a long summary of it if it's too long.
 
 ## Configuration
 
