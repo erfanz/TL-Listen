@@ -25,6 +25,7 @@ from fetch_emails import fetch_digest_emails
 from extract_links import extract_links_with_details
 from fetch_articles import fetch_article, resolve_article_url
 from email_processing import _decide_email_mode, _plain_email_content
+from parsers import get_specialized_parser_name
 from summarize import summarize, summarize_extended, split_email_stories
 from text_to_speech import generate_article_audio
 
@@ -43,13 +44,20 @@ def _write_summary_report(email_results, out_dir):
     lines = ["=" * 80, "  EMAIL DIGEST — PROCESSING SUMMARY", "=" * 80, ""]
 
     json_data = []
-    for email_subject, articles in email_results.items():
+    for email_subject, email_result in email_results.items():
+        parser_name = email_result.get("parser_name") or "default"
+        articles = email_result["articles"]
         lines.append(f"📧 {email_subject}")
+        lines.append(f"   Parser: {parser_name}")
         lines.append("-" * 80)
         lines.append(f"  {'#':<4} {'Source':<12} {'Article Title':<28} {'Audio':>6}  URL")
         lines.append(f"  {'—'*3:<4} {'—'*10:<12} {'—'*26:<28} {'—'*5:>6}  {'—'*28}")
 
-        email_json = {"email_subject": email_subject, "articles": []}
+        email_json = {
+            "email_subject": email_subject,
+            "parser_name": parser_name,
+            "articles": [],
+        }
         for idx, art in enumerate(articles, 1):
             title_display = (art["title"] or "⚠️ Failed to fetch")[:26]
             source_display = (art.get("source_type") or "external_url")[:10]
@@ -87,8 +95,10 @@ def run(dry_run=False):
     out_dir = config.OUTPUT_DIR / today
     text_dir = out_dir / "texts"
     mp3_dir = out_dir / "mp3"
+    raw_emails_dir = out_dir / "raw_emails"
     text_dir.mkdir(parents=True, exist_ok=True)
     mp3_dir.mkdir(parents=True, exist_ok=True)
+    raw_emails_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"🌅 Morning Digest — {today}")
     print(f"   Output directory: {out_dir}\n")
@@ -99,15 +109,36 @@ def run(dry_run=False):
         print("Nothing to process. Exiting.")
         return
 
+    # Save raw emails for debugging
+    for idx, email in enumerate(emails, 1):
+        safe_subj = _sanitize_filename(email["subject"])
+        email_file = raw_emails_dir / f"{idx:03d}_{safe_subj}.txt"
+        email_file.write_text(
+            f"Subject: {email['subject']}\n"
+            f"From: {email['from']}\n"
+            f"Gmail ID: {email['id']}\n"
+            f"{'=' * 60}\n\n"
+            f"--- Plain Text ---\n{email['text']}\n\n"
+            f"--- HTML ---\n{email['html']}\n",
+            encoding="utf-8",
+        )
+    print(f"   Raw emails saved to {raw_emails_dir}\n")
+
     # 2. Decide per-email mode and build work queue
     all_articles = []
     content_story_count = 0
     queued_resolved_urls = set()
-    email_results = OrderedDict()  # email_subject -> list of result dicts
+    email_results = OrderedDict()  # email_subject -> {parser_name, articles}
     for email in emails:
         mode, mode_reason, link_details = _decide_email_mode(email)
+        parser_name = get_specialized_parser_name(email)
         if email["subject"] not in email_results:
-            email_results[email["subject"]] = []
+            email_results[email["subject"]] = {
+                "parser_name": parser_name,
+                "articles": [],
+            }
+        elif parser_name and not email_results[email["subject"]].get("parser_name"):
+            email_results[email["subject"]]["parser_name"] = parser_name
 
         print(f"  📧 \"{email['subject']}\" → mode={mode} ({mode_reason})")
         if mode == "content":
@@ -115,7 +146,7 @@ def run(dry_run=False):
             if not content:
                 print("     ⚠️  Empty email body. Skipping.")
                 continue
-            stories = split_email_stories(content, email_subject=email["subject"])
+            stories = split_email_stories(email, email_subject=email["subject"])
             content_story_count += len(stories)
             print(f"     {len(stories)} story chunk(s) found in email body. Internal links ignored.")
             for story_idx, story in enumerate(stories, 1):
@@ -200,7 +231,7 @@ def run(dry_run=False):
             # Fetch article
             article = fetch_article(url, resolved_url=resolved_url)
             if not article:
-                email_results[email_subj].append({
+                email_results[email_subj]["articles"].append({
                     "url": url,
                     "title": None,
                     "audio": False,
@@ -263,7 +294,7 @@ def run(dry_run=False):
 
         if dry_run:
             print("  ⏭️  Dry run — skipping audio generation.\n")
-            email_results[email_subj].append({
+            email_results[email_subj]["articles"].append({
                 "url": url,
                 "title": title,
                 "audio": False,
@@ -286,7 +317,7 @@ def run(dry_run=False):
         except Exception as exc:
             print(f"  ❌ Audio generation failed: {exc}\n")
 
-        email_results[email_subj].append({
+        email_results[email_subj]["articles"].append({
             "url": url,
             "title": title,
             "audio": audio_ok,

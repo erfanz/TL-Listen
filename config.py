@@ -1,3 +1,4 @@
+import re
 import os
 from pathlib import Path
 
@@ -36,6 +37,31 @@ def _split_regex_env(name):
     return [item.strip() for item in raw.split(";") if item.strip()]
 
 
+def _load_parser_sender_rules():
+    raw = os.getenv("DIGEST_CONTENT_PARSER_SENDER_RULES", "")
+    if not raw.strip():
+        return []
+
+    rules = []
+    for item in raw.split(";"):
+        item = item.strip()
+        if not item:
+            continue
+        if "=" not in item:
+            raise ValueError(
+                "DIGEST_CONTENT_PARSER_SENDER_RULES entries must use regex=parser_name format"
+            )
+        pattern, parser_name = item.split("=", 1)
+        pattern = pattern.strip()
+        parser_name = parser_name.strip()
+        if not pattern or not parser_name:
+            raise ValueError(
+                "DIGEST_CONTENT_PARSER_SENDER_RULES entries must include both regex and parser_name"
+            )
+        rules.append((re.compile(pattern, re.IGNORECASE), parser_name))
+    return rules
+
+
 FORCE_CONTENT_SUBJECT_REGEX = _split_regex_env("DIGEST_FORCE_CONTENT_SUBJECT_REGEX")
 FORCE_CONTENT_SENDER_REGEX = _split_regex_env("DIGEST_FORCE_CONTENT_SENDER_REGEX")
 FORCE_LINKS_SUBJECT_REGEX = _split_regex_env("DIGEST_FORCE_LINKS_SUBJECT_REGEX")
@@ -46,6 +72,7 @@ EMAIL_CONTENT_MAX_LINK_DENSITY = float(
 )
 EMAIL_STORY_MIN_WORDS = int(os.getenv("DIGEST_EMAIL_STORY_MIN_WORDS", "80"))
 EMAIL_STORY_MAX_WORDS = int(os.getenv("DIGEST_EMAIL_STORY_MAX_WORDS", "900"))
+CONTENT_PARSER_SENDER_RULES = _load_parser_sender_rules()
 
 # Article fetch settings
 FETCH_TIMEOUT = int(os.getenv("DIGEST_FETCH_TIMEOUT", "30"))

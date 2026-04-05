@@ -1,7 +1,12 @@
 import re
 
+from bs4 import BeautifulSoup, Comment
+from bs4.element import NavigableString
+
 import config
 from extract_links import extract_links_with_details
+
+_UNWRAP_TAGS_FOR_LLM = ("div", "table", "tbody", "tr", "td")
 
 
 def _get_html_body(email):
@@ -10,33 +15,54 @@ def _get_html_body(email):
     return html.strip()
 
 
-def _get_sanitized_html_body(email):
+def trim_html_for_llm(html, unwrap_tags=_UNWRAP_TAGS_FOR_LLM):
     """
-    Return HTML body with scripts/styles removed and tag attributes stripped.
-    Keeps HTML tags and textual content.
+    Trim HTML for downstream LLM use.
+    Removes scripts/styles entirely, unwraps layout-only tags, strips comments,
+    and drops attributes from remaining tags.
     """
-    html = _get_html_body(email)
+    html = (html or "").strip()
     if not html:
         return ""
 
-    # Remove script/style blocks entirely.
-    body = re.sub(r"(?is)<(script|style)\b[^>]*>.*?</\1\s*>", "", html)
-    # Remove HTML comments.
-    body = re.sub(r"(?is)<!--.*?-->", "", body)
+    soup = BeautifulSoup(html, "html.parser")
 
-    # Keep tags but drop all attributes.
-    def _strip_tag_attributes(match):
-        slash_open = match.group(1) or ""
-        tag_name = match.group(2)
-        slash_close = match.group(3) or ""
-        return f"<{slash_open}{tag_name}{slash_close}>"
+    for tag in soup.find_all(("script", "style")):
+        tag.decompose()
 
-    body = re.sub(
-        r"(?is)<\s*(/?)\s*([a-zA-Z][\w:-]*)\b[^>]*?(/?)\s*>",
-        _strip_tag_attributes,
-        body,
-    )
-    return body.strip()
+    for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):
+        comment.extract()
+
+    for tag_name in unwrap_tags:
+        for tag in soup.find_all(tag_name):
+            tag.unwrap()
+
+    for tag in soup.find_all(True):
+        tag.attrs = {}
+
+    for text_node in soup.find_all(string=True):
+        if isinstance(text_node, NavigableString) and not text_node.strip():
+            text_node.extract()
+
+    while True:
+        empty_tags = [
+            tag
+            for tag in soup.find_all(True)
+            if not tag.get_text(strip=True) and not tag.find(True)
+        ]
+        if not empty_tags:
+            break
+        for tag in empty_tags:
+            tag.decompose()
+
+    return str(soup).strip()
+
+
+def _get_sanitized_html_body(email):
+    """
+    Return trimmed HTML body for LLM input while preserving meaningful content.
+    """
+    return trim_html_for_llm(_get_html_body(email))
 
 
 def _plain_email_content(email):

@@ -5,6 +5,7 @@ google-auth-oauthlib
 
 # Article extraction
 trafilatura
+beautifulsoup4
 
 # LLM (Ollama — just needs requests)
 requests

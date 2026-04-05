@@ -1,7 +1,8 @@
 import requests
 
 import config
-from email_processing import _get_html_body, _get_sanitized_html_body
+from email_processing import _get_sanitized_html_body
+from parsers import parse_specialized_email_stories
 
 _SYSTEM_PROMPT = (
     "You are a concise news summarizer. Given an article, produce a clear, "
@@ -14,6 +15,7 @@ _SPLIT_SYSTEM_PROMPT = (
     "Return ONLY valid JSON as an array.\n"
     "Each array item must be an object with keys: title, text.\n"
     "Rules:\n"
+    "- Semantic HTML tags such as <h1>-<h6>, <section>, <article> may indicate story boundaries, but please check context.\n"
     "- Keep each story semantically independent.\n"
     "- Ignore boilerplate sections (ads, footer, unsubscribe).\n"
     "- Keep text faithful to source content; do not invent facts.\n"
@@ -43,13 +45,19 @@ def _fallback_story_split(email_text, email_subject=""):
     return [{"title": title, "text": email_text.strip()}]
 
 
-def split_email_stories(email_text, email_subject=""):
+def split_email_stories(email, email_subject=""):
     """
     Split a content-heavy email into independent stories using Ollama.
     Returns list of dicts: [{title, text}, ...]
     Falls back to a single-story chunk on parse/model failures.
     """
-    text = (email_text or "").strip()
+
+    specialized_stories = parse_specialized_email_stories(email)
+    if specialized_stories:
+        print(f"  Using specialized parser for story splitting (subject: '{email_subject}').")
+        return specialized_stories
+
+    text = _get_sanitized_html_body(email)
     print(f"  Attempting to split email into stories with Ollama (subject: '{email_subject}') and content '{text}' words...")
     if not text:
         return []
