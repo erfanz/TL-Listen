@@ -49,6 +49,7 @@ Example:
 DIGEST_GMAIL_LABEL=digests
 DIGEST_FORCE_CONTENT_SENDER_REGEX=substack\\.com;news@mydigest\\.com
 DIGEST_FORCE_LINKS_SUBJECT_REGEX=Hacker News Digest|Link Roundup
+DIGEST_LINK_PARSER_SENDER_RULES=hndigest\\.com=hackernews_digest
 ```
 
 ### 2. Gmail API credentials
@@ -108,6 +109,7 @@ All settings can be overridden via environment variables:
 | `DIGEST_FORCE_CONTENT_SENDER_REGEX` | *(empty)* | `;`-separated regex patterns to force content mode by sender |
 | `DIGEST_FORCE_LINKS_SUBJECT_REGEX` | *(empty)* | `;`-separated regex patterns to force links mode by subject |
 | `DIGEST_FORCE_LINKS_SENDER_REGEX` | *(empty)* | `;`-separated regex patterns to force links mode by sender |
+| `DIGEST_LINK_PARSER_SENDER_RULES` | *(empty)* | `;`-separated `regex=parser_name` rules for sender-specific link extraction |
 
 ### Email mode routing (links vs content)
 
@@ -124,6 +126,18 @@ If auto-detection misclassifies a newsletter, force behavior with regex env vars
 export DIGEST_FORCE_CONTENT_SENDER_REGEX="mynewsletter\\.com;Substack"
 export DIGEST_FORCE_LINKS_SUBJECT_REGEX="Hacker News Digest|Link Roundup"
 ```
+
+### Specialized link parsers
+
+For newsletters whose HTML mixes article links with lots of navigation or tracking links, you can
+route matching senders through a specialized link parser:
+
+```bash
+export DIGEST_LINK_PARSER_SENDER_RULES="hndigest\\.com=hackernews_digest"
+```
+
+The built-in `hackernews_digest` parser only keeps links that match the exact HTML shape
+`tr > th > a` and ignores all other anchors in the email.
 
 ### Configurable link skip rules
 

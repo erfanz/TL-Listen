@@ -22,7 +22,7 @@ if config.SSL_CA_FILE:
     os.environ.setdefault("CURL_CA_BUNDLE", config.SSL_CA_FILE)
 
 from fetch_emails import fetch_digest_emails
-from extract_links import extract_links_with_details
+from extract_links import extract_links_with_details, get_specialized_link_parser_name
 from fetch_articles import fetch_article, resolve_article_url
 from email_processing import _decide_email_mode, _plain_email_content
 from parsers import get_specialized_parser_name
@@ -131,7 +131,7 @@ def run(dry_run=False):
     email_results = OrderedDict()  # email_subject -> {parser_name, articles}
     for email in emails:
         mode, mode_reason, link_details = _decide_email_mode(email)
-        parser_name = get_specialized_parser_name(email)
+        parser_name = get_specialized_parser_name(email) or get_specialized_link_parser_name(email)
         if email["subject"] not in email_results:
             email_results[email["subject"]] = {
                 "parser_name": parser_name,

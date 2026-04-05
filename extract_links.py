@@ -4,6 +4,7 @@ from html import unescape
 from urllib.parse import urlparse
 
 import config
+from link_parsers import extract_hackernews_digest_urls
 
 # Domains / patterns to skip
 _SKIP_PATTERNS = [
@@ -32,6 +33,9 @@ _SKIP_RE = re.compile("|".join(_SKIP_PATTERNS), re.IGNORECASE)
 
 # Minimum URL length to consider (filters out short tracking redirects)
 _MIN_URL_LEN = 30
+_LINK_PARSERS = {
+    "hackernews_digest": extract_hackernews_digest_urls,
+}
 
 
 def _load_skip_rules():
@@ -95,6 +99,14 @@ def _extract_urls_from_text(text):
     return re.findall(r"https?://[^\s<>\"')\]]+", text)
 
 
+def get_specialized_link_parser_name(email):
+    sender = email.get("from") or ""
+    for pattern, parser_name in config.LINK_PARSER_SENDER_RULES:
+        if pattern.search(sender):
+            return parser_name
+    return None
+
+
 def _is_article_url(url):
     """Heuristic: keep URLs that look like articles, skip junk."""
     if len(url) < _MIN_URL_LEN:
@@ -143,11 +155,18 @@ def extract_links_with_details(email):
     Extract article URLs from an email dict {html, text}.
     Returns extraction details including kept/skipped URLs.
     """
-    raw_urls = []
-    if email.get("html"):
-        raw_urls.extend(_extract_urls_from_html(email["html"]))
-    if email.get("text"):
-        raw_urls.extend(_extract_urls_from_text(email["text"]))
+    parser_name = get_specialized_link_parser_name(email)
+    if parser_name:
+        parser = _LINK_PARSERS.get(parser_name)
+        if parser is None:
+            raise ValueError(f"Unknown link parser configured: {parser_name}")
+        raw_urls = parser(email)
+    else:
+        raw_urls = []
+        if email.get("html"):
+            raw_urls.extend(_extract_urls_from_html(email["html"]))
+        if email.get("text"):
+            raw_urls.extend(_extract_urls_from_text(email["text"]))
 
     seen = set()
     article_urls = []

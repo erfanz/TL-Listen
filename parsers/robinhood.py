@@ -92,7 +92,6 @@ def _is_story_subheading(heading_text):
 
 
 def parse_robinhood_email_stories(email):
-    print(f"Parsing Robinhood email with subject: {email.get('Subject', '')}")
     html = _get_sanitized_html_body(email)
     if not html:
         return []
