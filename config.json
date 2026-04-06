@@ -1,0 +1,71 @@
+{
+  "gmail": {
+    "label": "digests",
+    "credentials_file": "credentials.json",
+    "token_file": "token.json",
+    "scopes": [
+      "https://www.googleapis.com/auth/gmail.modify"
+    ]
+  },
+  "ollama": {
+    "base_url": "http://localhost:11434",
+    "model": "llama3.1"
+  },
+  "tts": {
+    "voice": "af_heart",
+    "speed": 1.0,
+    "lang": "a"
+  },
+  "output": {
+    "dir": "output",
+    "link_skip_rules_file": "link_skip_rules.json"
+  },
+  "email_processing": {
+    "force_content_subject_regex": [],
+    "force_content_sender_regex": [
+      "snacks.robinhood.com"
+    ],
+    "force_links_subject_regex": [],
+    "force_links_sender_regex": [
+      "hndigest.com"
+    ],
+    "content_min_words": 120,
+    "content_max_link_density": 0.03,
+    "story_min_words": 80,
+    "story_max_words": 900,
+    "content_parser_sender_rules": [
+      {
+        "pattern": "snacks\\.robinhood\\.com",
+        "parser": "robinhood"
+      }
+    ],
+    "link_parser_sender_rules": [
+      {
+        "pattern": "hndigest\\.com",
+        "parser": "hackernews_digest"
+      }
+    ]
+  },
+  "article_fetch": {
+    "timeout": 30,
+    "word_limit": 400
+  },
+  "summarization": {
+    "summary_sentence_count": 1,
+    "summary_max_tokens": 70,
+    "extended_summary_word_count": 200,
+    "extended_summary_max_tokens": 600
+  },
+  "ssl": {
+    "ca_file": null
+  },
+  "rss": {
+    "feed_urls": [
+      "https://www.theneuron.ai/feed/"
+    ],
+    "state_file": "rss_state.json",
+    "output_dir": "output/rss",
+    "fetch_timeout": 30,
+    "initial_window_days": 7
+  }
+}

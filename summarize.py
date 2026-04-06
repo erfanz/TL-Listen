@@ -4,12 +4,6 @@ import config
 from email_processing import _get_sanitized_html_body
 from parsers import parse_specialized_email_stories
 
-_SYSTEM_PROMPT = (
-    "You are a concise news summarizer. Given an article, produce a clear, "
-    "informative summary in 3-5 sentences. Focus on the key facts and takeaways. "
-    "Do not include any preamble like 'Here is a summary'. Just output the summary."
-)
-
 _SPLIT_SYSTEM_PROMPT = (
     "You split newsletter content into independent stories.\n"
     "Return ONLY valid JSON as an array.\n"
@@ -22,6 +16,64 @@ _SPLIT_SYSTEM_PROMPT = (
     "- If there is only one story, return one item.\n"
     "- No markdown code fences, no explanations."
 )
+
+
+def _summary_system_prompt():
+    return (
+        "You are a concise news summarizer. Given an article, produce a clear, "
+        f"informative summary in about {config.SUMMARY_SENTENCE_COUNT} sentences. "
+        "Focus on the key facts and takeaways. Do not include any preamble like "
+        "'Here is a summary'. Just output the summary."
+    )
+
+
+def _extended_summary_system_prompt():
+    return (
+        "You are a thorough news summarizer. Given an article, produce a detailed "
+        f"summary in no more than {config.EXTENDED_SUMMARY_WORD_COUNT} words. "
+        "Cover all the key points, arguments, and conclusions, but drop secondary "
+        "detail rather than exceeding the word limit. Do not include any preamble "
+        "like 'Here is a summary'. Just output the summary."
+    )
+
+
+def _count_words(text):
+    return len(text.split())
+
+
+def _extended_summary_token_budget():
+    requested_words = max(1, config.EXTENDED_SUMMARY_WORD_COUNT)
+    estimated_tokens = max(40, int(requested_words * 1.5))
+    return min(config.EXTENDED_SUMMARY_MAX_TOKENS, estimated_tokens)
+
+
+def _generate_text(system_prompt, prompt, *, timeout):
+    response = requests.post(
+        f"{config.OLLAMA_BASE_URL}/api/generate",
+        json={
+            "model": config.OLLAMA_MODEL,
+            "system": system_prompt,
+            "prompt": prompt,
+            "stream": False,
+            "options": {
+                "temperature": 0.3,
+                "num_predict": _extended_summary_token_budget(),
+            },
+        },
+        timeout=timeout,
+    )
+    response.raise_for_status()
+    return response.json().get("response", "").strip()
+
+
+def _rewrite_extended_summary(summary_text, title=""):
+    prompt = (
+        f"Article title: {title}\n\n"
+        f"Rewrite this summary so it stays within {config.EXTENDED_SUMMARY_WORD_COUNT} words. "
+        "Preserve the most important facts, remove secondary detail, and do not add new information.\n\n"
+        f"Summary:\n{summary_text}"
+    )
+    return _generate_text(_extended_summary_system_prompt(), prompt, timeout=120)
 
 
 def _extract_json_array(text):
@@ -133,10 +185,10 @@ def summarize(article_text, title=""):
             f"{config.OLLAMA_BASE_URL}/api/generate",
             json={
                 "model": config.OLLAMA_MODEL,
-                "system": _SYSTEM_PROMPT,
+                "system": _summary_system_prompt(),
                 "prompt": prompt,
                 "stream": False,
-                "options": {"temperature": 0.3, "num_predict": 300},
+                "options": {"temperature": 0.3, "num_predict": config.SUMMARY_MAX_TOKENS},
             },
             timeout=120,
         )
@@ -152,31 +204,24 @@ def summarize(article_text, title=""):
 
 def summarize_extended(article_text, title=""):
     """
-    Produce a ~3-minute summary (~450 words) for long articles.
+    Produce a detailed summary for long articles that stays within the
+    configured extended-summary word count.
     Used when the article exceeds the configured word limit.
     """
-    system_prompt = (
-        "You are a thorough news summarizer. Given an article, produce a detailed "
-        "summary of approximately 450 words (about 3 minutes when read aloud). "
-        "Cover all the key points, arguments, and conclusions. "
-        "Do not include any preamble like 'Here is a summary'. Just output the summary."
-    )
+    system_prompt = _extended_summary_system_prompt()
     prompt = f"Article title: {title}\n\n{article_text}"
 
     try:
-        response = requests.post(
-            f"{config.OLLAMA_BASE_URL}/api/generate",
-            json={
-                "model": config.OLLAMA_MODEL,
-                "system": system_prompt,
-                "prompt": prompt,
-                "stream": False,
-                "options": {"temperature": 0.3, "num_predict": 800},
-            },
-            timeout=180,
-        )
-        response.raise_for_status()
-        return response.json().get("response", "").strip()
+        extended_summary = _generate_text(system_prompt, prompt, timeout=180)
+        if _count_words(extended_summary) <= config.EXTENDED_SUMMARY_WORD_COUNT:
+            return extended_summary
+        rewritten_summary = _rewrite_extended_summary(extended_summary, title=title)
+        if _count_words(rewritten_summary) <= config.EXTENDED_SUMMARY_WORD_COUNT:
+            return rewritten_summary
+        second_rewrite = _rewrite_extended_summary(rewritten_summary, title=title)
+        if _count_words(second_rewrite) <= config.EXTENDED_SUMMARY_WORD_COUNT:
+            return second_rewrite
+        return _fallback_extended_summary(article_text)
     except requests.ConnectionError:
         print("  ⚠️  Cannot connect to Ollama. Is it running? (ollama serve)")
         return _fallback_extended_summary(article_text)
@@ -186,14 +231,14 @@ def summarize_extended(article_text, title=""):
 
 
 def _fallback_summary(text):
-    """Simple extractive fallback: first 3 sentences."""
+    """Simple extractive fallback: first N sentences."""
     import re
 
     sentences = re.split(r"(?<=[.!?])\s+", text)
-    return " ".join(sentences[:3])
+    return " ".join(sentences[: config.SUMMARY_SENTENCE_COUNT])
 
 
 def _fallback_extended_summary(text):
-    """Extractive fallback: first ~450 words."""
+    """Extractive fallback: first N words."""
     words = text.split()
-    return " ".join(words[:450])
+    return " ".join(words[: config.EXTENDED_SUMMARY_WORD_COUNT])

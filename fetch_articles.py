@@ -5,6 +5,7 @@ import requests
 import trafilatura
 
 import config
+from shared.text_cleaning import decode_http_text, normalize_title
 
 _USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -60,7 +61,7 @@ def _download(url):
         headers={"User-Agent": _USER_AGENT, "Accept": "text/html,*/*"},
     )
     resp.raise_for_status()
-    return resp.text
+    return decode_http_text(resp)
 
 
 def _extract_title(html):
@@ -68,13 +69,13 @@ def _extract_title(html):
     try:
         meta = trafilatura.extract_metadata(html)
         if meta and meta.title:
-            return meta.title
+            return normalize_title(meta.title)
     except Exception:
         pass
     import re
     m = re.search(r"<title[^>]*>([^<]+)</title>", html, re.IGNORECASE)
     if m:
-        return m.group(1).strip()
+        return normalize_title(m.group(1))
     return ""
 
 

@@ -1,6 +1,8 @@
 .venv/
+.venv312/
 output/
 __pycache__/
+rss_state.json
 
 # sensitive information
 token.json
