@@ -44,6 +44,7 @@ def process_article_queue(
       - text_override (optional)
       - title_hint (optional)
       - source_name (optional)
+      - date (optional)
     """
     success_count = 0
     for index, item in enumerate(all_articles, 1):
@@ -112,10 +113,13 @@ def process_article_queue(
         filename = f"{index:03d}_{sanitize_filename(title)}"
         text_file = text_dir / f"{filename}.txt"
 
-        # Build header with optional source name
+        # Build header with optional source name and date
         header = f"Title: {title}\n"
         if source_name:
             header += f"Source: {source_name}\n"
+        date = item.get("date", "")
+        if date:
+            header += f"Date: {date}\n"
         header += f"URL: {article['url']}\n\n"
 
         if dry_run:

@@ -100,6 +100,7 @@ def run(dry_run=False):
                     "source_type": "external_url",
                     "title_hint": entry["title"],
                     "source_name": feed_data["feed_title"],
+                    "date": entry["published_at"].strftime("%a, %d %b %Y"),
                 }
             )
 

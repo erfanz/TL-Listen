@@ -75,6 +75,7 @@ def run(dry_run=False):
         email_file.write_text(
             f"Subject: {email['subject']}\n"
             f"From: {extract_sender_name(email['from'])}\n"
+            f"Date: {email.get('date', '')}\n"
             f"Gmail ID: {email['id']}\n"
             f"{'=' * 60}\n\n"
             f"--- Plain Text ---\n{email['text']}\n\n"
@@ -117,6 +118,7 @@ def run(dry_run=False):
                     "title_hint": story.get("title") or f"{email['subject']} — Story {story_idx}",
                     "text_override": story["text"],
                     "source_name": email["from"],
+                    "date": email.get("date", ""),
                 })
             continue
 
@@ -160,6 +162,7 @@ def run(dry_run=False):
                 "email_subject": email["subject"],
                 "source_type": "external_url",
                 "source_name": email["from"],
+                "date": email.get("date", ""),
             })
 
     if not all_articles:

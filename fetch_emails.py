@@ -7,6 +7,7 @@ from googleapiclient.discovery import build
 import google_auth_httplib2
 import httplib2
 import base64
+from email.utils import parsedate_to_datetime
 
 import config
 
@@ -105,6 +106,17 @@ def fetch_digest_emails(mark_read=True):
         headers = {h["name"]: h["value"] for h in msg["payload"].get("headers", [])}
         subject = headers.get("Subject", "(no subject)")
         sender = headers.get("From", "")
+        raw_date = headers.get("Date", "")
+
+        # Format date as "Day, DD Mon YYYY"
+        date = ""
+        if raw_date:
+            try:
+                parsed_date = parsedate_to_datetime(raw_date)
+                date = parsed_date.strftime("%a, %d %b %Y")
+            except (ValueError, TypeError):
+                date = raw_date
+
         html_parts, text_parts = _decode_body(msg["payload"])
 
         emails.append(
@@ -112,6 +124,7 @@ def fetch_digest_emails(mark_read=True):
                 "id": msg_ref["id"],
                 "subject": subject,
                 "from": sender,
+                "date": date,
                 "html": "\n".join(html_parts),
                 "text": "\n".join(text_parts),
             }
