@@ -110,7 +110,11 @@ def process_article_queue(
                 body_text = article["text"]
                 extended_summary_word_count = 0
 
-        filename = f"{index:03d}_{sanitize_filename(title)}"
+        # Build filename with optional source name prefix
+        if source_name:
+            filename = f"{index:03d}_{sanitize_filename(source_name)}_{sanitize_filename(title)}"
+        else:
+            filename = f"{index:03d}_{sanitize_filename(title)}"
         text_file = text_dir / f"{filename}.txt"
 
         # Build header with optional source name and date
