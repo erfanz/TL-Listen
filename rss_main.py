@@ -99,6 +99,7 @@ def run(dry_run=False):
                     "feed_key": feed_key,
                     "source_type": "external_url",
                     "title_hint": entry["title"],
+                    "source_name": feed_data["feed_title"],
                 }
             )
 

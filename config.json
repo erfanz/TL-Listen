@@ -52,7 +52,7 @@
   },
   "summarization": {
     "summary_sentence_count": 1,
-    "summary_max_tokens": 70,
+    "summary_max_tokens": 40,
     "extended_summary_word_count": 200,
     "extended_summary_max_tokens": 600
   },

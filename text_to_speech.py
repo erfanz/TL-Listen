@@ -52,7 +52,7 @@ def text_to_audio(script, output_path):
     return mp3_path
 
 
-def generate_article_audio(title, summary, article_text, output_path,
+def generate_article_audio(source, title, summary, article_text, output_path,
                           is_long=False):
     """
     Build a podcast-style script from summary + article, then convert to audio.
@@ -61,14 +61,14 @@ def generate_article_audio(title, summary, article_text, output_path,
     """
     if is_long:
         script = (
-            f"Today's article: {title}.\n\n"
+            f"A new article from {source}: {title}.\n\n"
             f"Here's a quick summary: {summary}\n\n"
             f"Here's a more detailed summary of the article.\n\n"
             f"{article_text}"
         )
     else:
         script = (
-            f"Today's article: {title}.\n\n"
+            f"A new article from {source}: {title}.\n\n"
             f"Here's a quick summary: {summary}\n\n"
             f"And now, the full article.\n\n"
             f"{article_text}"

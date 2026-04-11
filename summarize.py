@@ -196,10 +196,12 @@ def summarize(article_text, title=""):
         return response.json().get("response", "").strip()
     except requests.ConnectionError:
         print("  ⚠️  Cannot connect to Ollama. Is it running? (ollama serve)")
-        return _fallback_summary(article_text)
+        import sys
+        sys.exit(1)
     except Exception as e:
         print(f"  ⚠️  Summarization error: {e}")
-        return _fallback_summary(article_text)
+        import sys
+        sys.exit(1)
 
 
 def summarize_extended(article_text, title=""):
@@ -211,23 +213,16 @@ def summarize_extended(article_text, title=""):
     system_prompt = _extended_summary_system_prompt()
     prompt = f"Article title: {title}\n\n{article_text}"
 
-    try:
-        extended_summary = _generate_text(system_prompt, prompt, timeout=180)
-        if _count_words(extended_summary) <= config.EXTENDED_SUMMARY_WORD_COUNT:
-            return extended_summary
-        rewritten_summary = _rewrite_extended_summary(extended_summary, title=title)
-        if _count_words(rewritten_summary) <= config.EXTENDED_SUMMARY_WORD_COUNT:
-            return rewritten_summary
-        second_rewrite = _rewrite_extended_summary(rewritten_summary, title=title)
-        if _count_words(second_rewrite) <= config.EXTENDED_SUMMARY_WORD_COUNT:
-            return second_rewrite
-        return _fallback_extended_summary(article_text)
-    except requests.ConnectionError:
-        print("  ⚠️  Cannot connect to Ollama. Is it running? (ollama serve)")
-        return _fallback_extended_summary(article_text)
-    except Exception as e:
-        print(f"  ⚠️  Extended summarization error: {e}")
-        return _fallback_extended_summary(article_text)
+    extended_summary = _generate_text(system_prompt, prompt, timeout=180)
+    if _count_words(extended_summary) <= config.EXTENDED_SUMMARY_WORD_COUNT:
+        return extended_summary
+    rewritten_summary = _rewrite_extended_summary(extended_summary, title=title)
+    if _count_words(rewritten_summary) <= config.EXTENDED_SUMMARY_WORD_COUNT:
+        return rewritten_summary
+    second_rewrite = _rewrite_extended_summary(rewritten_summary, title=title)
+    if _count_words(second_rewrite) <= config.EXTENDED_SUMMARY_WORD_COUNT:
+        return second_rewrite
+    raise RuntimeError("Extended summary could not be reduced to the required word count.")
 
 
 def _fallback_summary(text):

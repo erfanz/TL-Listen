@@ -6,6 +6,7 @@ from summarize import summarize, summarize_extended
 from text_to_speech import generate_article_audio
 
 from shared.reporting import sanitize_filename
+import re
 
 
 def create_dated_output_dirs(output_root, *subdirs):
@@ -42,6 +43,7 @@ def process_article_queue(
       - <group_key_field>
       - text_override (optional)
       - title_hint (optional)
+      - source_name (optional)
     """
     success_count = 0
     for index, item in enumerate(all_articles, 1):
@@ -49,6 +51,13 @@ def process_article_queue(
         resolved_url = item.get("resolved_url", url)
         group_key = item[group_key_field]
         source_type = item.get("source_type", "external_url")
+        source_name = item.get("source_name")
+        if source_name:
+            match = re.match(r'\s*"?([^"<]*)"?\s*<.*?>', source_name)
+            if match:
+                source_name = match.group(1).strip() or source_name.strip()
+            else:
+                source_name = source_name.strip()
 
         print(f"[{index}/{len(all_articles)}] {url}")
 
@@ -102,25 +111,29 @@ def process_article_queue(
 
         filename = f"{index:03d}_{sanitize_filename(title)}"
         text_file = text_dir / f"{filename}.txt"
+
+        # Build header with optional source name
+        header = f"Title: {title}\n"
+        if source_name:
+            header += f"Source: {source_name}\n"
+        header += f"URL: {article['url']}\n\n"
+
         if dry_run:
             text_file.write_text(
-                f"Title: {title}\n"
-                f"URL: {article['url']}\n\n"
+                f"{header}"
                 f"--- Full Article ---\n{article['text']}\n",
                 encoding="utf-8",
             )
         elif is_long:
             text_file.write_text(
-                f"Title: {title}\n"
-                f"URL: {article['url']}\n\n"
+                f"{header}"
                 f"--- Summary ({summary_word_count} words) ---\n{summary}\n\n"
                 f"--- Extended Summary ({extended_summary_word_count} words; article was {article_word_count} words) ---\n{body_text}\n",
                 encoding="utf-8",
             )
         else:
             text_file.write_text(
-                f"Title: {title}\n"
-                f"URL: {article['url']}\n\n"
+                f"{header}"
                 f"--- Summary ({summary_word_count} words) ---\n{summary}\n\n"
                 f"--- Full Article ---\n{article['text']}\n",
                 encoding="utf-8",
@@ -144,6 +157,7 @@ def process_article_queue(
         audio_ok = False
         try:
             result_file = generate_article_audio(
+                source_name,
                 title,
                 summary,
                 body_text,

@@ -11,6 +11,7 @@ import sys
 from collections import OrderedDict
 
 import config
+import re
 
 # Propagate custom CA bundle to all libraries that use requests/urllib3
 if config.SSL_CA_FILE:
@@ -27,6 +28,12 @@ from summarize import split_email_stories
 from shared.pipeline import create_dated_output_dirs, process_article_queue
 from shared.reporting import sanitize_filename, write_summary_report
 
+def extract_sender_name(sender):
+    # Extracts the display name from 'Name <email@domain>' or returns as-is if no angle brackets
+    match = re.match(r'\s*"?([^"<]*)"?\s*<.*?>', sender)
+    if match:
+        return match.group(1).strip() or sender.strip()
+    return sender.strip()
 
 def _write_summary_report(email_results, out_dir):
     write_summary_report(
@@ -67,7 +74,7 @@ def run(dry_run=False):
         email_file = raw_emails_dir / f"{idx:03d}_{safe_subj}.txt"
         email_file.write_text(
             f"Subject: {email['subject']}\n"
-            f"From: {email['from']}\n"
+            f"From: {extract_sender_name(email['from'])}\n"
             f"Gmail ID: {email['id']}\n"
             f"{'=' * 60}\n\n"
             f"--- Plain Text ---\n{email['text']}\n\n"
@@ -109,6 +116,7 @@ def run(dry_run=False):
                     "source_type": "email_story",
                     "title_hint": story.get("title") or f"{email['subject']} — Story {story_idx}",
                     "text_override": story["text"],
+                    "source_name": email["from"],
                 })
             continue
 
@@ -151,6 +159,7 @@ def run(dry_run=False):
                 "resolved_url": item["resolved_url"],
                 "email_subject": email["subject"],
                 "source_type": "external_url",
+                "source_name": email["from"],
             })
 
     if not all_articles:
