@@ -24,6 +24,23 @@ def create_dated_output_dirs(output_root, *subdirs):
     return today, out_dir, created_dirs
 
 
+def _get_max_file_number(text_dir, mp3_dir):
+    """Find the highest numbered file in text_dir and mp3_dir."""
+    max_num = 0
+    for directory in [text_dir, mp3_dir]:
+        if not directory.exists():
+            continue
+        for file_path in directory.iterdir():
+            if file_path.is_file():
+                filename = file_path.stem
+                # Extract leading digits (e.g., "001" from "001_title.txt")
+                match = re.match(r'^(\d+)_', filename)
+                if match:
+                    num = int(match.group(1))
+                    max_num = max(max_num, num)
+    return max_num
+
+
 def process_article_queue(
     all_articles,
     *,
@@ -47,7 +64,9 @@ def process_article_queue(
       - date (optional)
     """
     success_count = 0
-    for index, item in enumerate(all_articles, 1):
+    start_index = _get_max_file_number(text_dir, mp3_dir) + 1
+    for offset, item in enumerate(all_articles):
+        index = start_index + offset
         url = item["url"]
         resolved_url = item.get("resolved_url", url)
         group_key = item[group_key_field]
@@ -60,7 +79,7 @@ def process_article_queue(
             else:
                 source_name = source_name.strip()
 
-        print(f"[{index}/{len(all_articles)}] {url}")
+        print(f"[{index}/{start_index + len(all_articles) - 1}] {url}")
 
         if item.get("text_override"):
             article = {
